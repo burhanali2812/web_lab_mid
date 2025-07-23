@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   frontCnic: { type: String, default: null },
   backCnic: { type: String, default: null },
   role: { type: String, default: "user" },
+   isDeleted: { type: Boolean, required: true, default: false },
   createdAt: { type: Date, default: Date.now }
 });
   
