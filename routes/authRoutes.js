@@ -885,7 +885,7 @@ router.get("/getAllUser", authMiddleWare, async (req, res) => {
   try {
     if (req.user.role === "admin") {
       // Admin gets all users
-      const users = await User.find();
+      const users = await User.find().sort({createdAt : -1});
       return res.json({ users });
     }
 
