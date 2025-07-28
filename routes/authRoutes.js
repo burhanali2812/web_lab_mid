@@ -146,6 +146,7 @@ const mailOptions = {
   }
 });
 
+
 router.post("/verify-otp", (req, res) => {
   const { email, otp } = req.body;
 
@@ -323,66 +324,142 @@ router.post("/signup/step1", async (req, res) => {
     });
   }
 });
+
+router.post("/notify-new-user", authMiddleWare, async (req, res) => {
+  const { name, email, phone } = req.user;
+
+  if (!name || !email) {
+    return res.status(400).json({ message: "Missing user name or email." });
+  }
+
+  const adminEmail = "teamslostandfound@gmail.com";
+
+  const mailOptions = {
+    from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
+    to: adminEmail,
+    subject: "🆕 New User Registered on Lost and Found App",
+    html: `
+      <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333; max-width: 600px; margin: auto; background: #f9f9f9; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+        <h2 style="color: #007BFF;">New User Registered</h2>
+
+        <p>Dear Admin,</p>
+
+        <p>A new user has just created an account on the Lost and Found App. Here are the details:</p>
+
+        <ul style="list-style: none; padding-left: 0;">
+          <li><strong>Name:</strong> ${name}</li>
+          <li><strong>Email:</strong> ${email}</li>
+          <li><strong>Phone:</strong> ${phone || 'Not Provided'}</li>
+          <li><strong>Registration Time:</strong> ${new Date().toLocaleString()}</li>
+        </ul>
+
+        <p style="margin-top: 24px;">Please verify the account if necessary or monitor for activity.</p>
+
+        <p style="margin-top: 32px;">
+          Regards,<br/>
+          <strong>Lost and Found System</strong>
+        </p>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ message: "Admin notified of new user registration." });
+  } catch (error) {
+    console.error("Error sending new user email:", error);
+    res.status(500).json({ message: "Failed to notify admin." });
+  }
+});
+
 router.post("/signup/step3", async (req, res) => {
-  const { userId, password , token} = req.body;
+  const { userId, password, token } = req.body;
 
   if (!userId || !password) {
     return res.status(400).json({ success: false, message: "User ID and password are required" });
   }
-  if (!token) {
-  return res.status(400).json({ success: false, message: "reCAPTCHA token is missing" });
-}
 
+  if (!token) {
+    return res.status(400).json({ success: false, message: "reCAPTCHA token is missing" });
+  }
 
   try {
-
-     const response = await axios.post(
-      `https://www.google.com/recaptcha/api/siteverify`,
-      null,
-      {
-        params: {
-          secret: process.env.RECAPTCHA_SECRET,
-          response: token,
-        },
-      }
-    );
+    // ✅ reCAPTCHA verification
+    const response = await axios.post("https://www.google.com/recaptcha/api/siteverify", null, {
+      params: {
+        secret: process.env.RECAPTCHA_SECRET,
+        response: token,
+      },
+    });
 
     if (!response.data.success) {
       return res.status(400).json({ success: false, message: "reCAPTCHA failed" });
     }
+
+    // ✅ Update user password
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
+    const hashedPassword = await bcrypt.hash(password, 10);
     user.password = hashedPassword;
     await user.save();
 
-     const title = "Account Verification Pending – Stay Updated!";
-     const message =
-        "Thank you for registering with us! Your account is currently under review by our admin team to ensure all details are accurate and complete. Please be assured that we are working diligently to process your request. To stay informed on the status of your account, we encourage you to check back daily for updates on your verification process. We appreciate your patience and look forward to providing you with an exceptional experience once your account is fully verified.Regards,The Lost and Found Team";
-      // Send notification
-      await fetch("https://lost-and-found-backend-xi.vercel.app/auth/pushNotification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, title, message }),
-      });
+    // ✅ Send push notification
+    const title = "Account Verification Pending – Stay Updated!";
+    const message = `
+      Thank you for registering with us! Your account is currently under review by our admin team.
+      Please check back daily for updates on your verification process.
+      <br/><br/>
+      Regards,<br/>
+      The Lost and Found Team
+    `;
 
-      // Send email
-      await transporter.sendMail({
-        from: `"Lost & Found" <${process.env.SMTP_USER}>`,
-        to: user.email,
-        subject: title,
-        html: message,
-      });
+    await fetch("https://lost-and-found-backend-xi.vercel.app/auth/pushNotification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, title, message: message.replace(/<br\/?>/g, "\n") }),
+    });
 
-    return res.status(200).json({ success: true, message: "Password saved successfully" });
+    // ✅ Send email to user
+    await transporter.sendMail({
+      from: `"Lost & Found" <${process.env.SMTP_USER}>`,
+      to: user.email,
+      subject: title,
+      html: message,
+    });
+
+    // ✅ Send email to admin
+    const adminEmail = "teamslostandfound@gmail.com";
+    const mailOptions = {
+      from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
+      to: adminEmail,
+      subject: "🆕 New User Registered on Lost and Found App",
+      html: `
+        <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333; max-width: 600px; margin: auto; background: #f9f9f9; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+          <h2 style="color: #007BFF;">New User Registered</h2>
+          <p>Dear Admin,</p>
+          <p>A new user has just completed registration. Here are the details:</p>
+          <ul style="list-style: none; padding-left: 0;">
+            <li><strong>Name:</strong> ${user.name}</li>
+            <li><strong>Email:</strong> ${user.email}</li>
+            <li><strong>Phone:</strong> ${user.phone || 'Not Provided'}</li>
+            <li><strong>Registration Time:</strong> ${new Date().toLocaleString()}</li>
+          </ul>
+          <p style="margin-top: 24px;">Please verify the account or monitor activity.</p>
+          <p style="margin-top: 32px;">Regards,<br/><strong>Lost and Found System</strong></p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.status(200).json({ success: true, message: "Password saved and notifications sent." });
   } catch (error) {
     console.error("Signup step3 error:", error);
-    return res.status(500).json({ success: false, message: "Failed to save password", error: error.message });
+    return res.status(500).json({ success: false, message: "Failed to complete registration", error: error.message });
   }
 });
+
 
 
 
