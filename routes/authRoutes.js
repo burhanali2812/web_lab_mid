@@ -945,8 +945,7 @@ router.post("/reset-password", async (req, res) => {
 router.post("/verify-password", authMiddleWare, async (req, res) => {
   const { password, action } = req.body;
 
-  console.log("🔍 Received action:", action); // Add this
-  console.log("🔐 Authenticated user:", req.user);
+
 
   try {
     const user = await User.findById(req.user._id);
@@ -959,13 +958,13 @@ router.post("/verify-password", authMiddleWare, async (req, res) => {
       return res.status(400).json({ message: "Invalid Password" });
     }
 
-    // 🔁 Normalize action comparison
+ 
     if (action && action.trim().toLowerCase() === "password") {
       const token = jwt.sign({ email: user.email }, process.env.SECRET_KEY, {
-        expiresIn: "15m",
+        expiresIn: "5h",
       });
 
-      console.log("✅ Password match — sending token:", token); // Add this to verify token generation
+
       return res.json({
         success: true,
         name: user.name,
