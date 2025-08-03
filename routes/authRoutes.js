@@ -396,7 +396,6 @@ router.post("/signup/step3", async (req, res) => {
       return res.status(400).json({ success: false, message: "reCAPTCHA failed" });
     }
 
-    // ✅ Update user password
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
@@ -404,13 +403,12 @@ router.post("/signup/step3", async (req, res) => {
     user.password = hashedPassword;
     await user.save();
 
-    // ✅ Send push notification
     const title = "Account Verification Pending – Stay Updated!";
     const message = `
       Thank you for registering with us! Your account is currently under review by our admin team.
       Please check back daily for updates on your verification process.
-      <br/><br/>
-      Regards,<br/>
+  
+      Regards,
       The Lost and Found Team
     `;
 
@@ -427,8 +425,6 @@ router.post("/signup/step3", async (req, res) => {
       subject: title,
       html: message,
     });
-
-    // ✅ Send email to admin
     const adminEmail = "teamslostandfound@gmail.com";
     const mailOptions = {
       from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
@@ -859,8 +855,6 @@ router.put("/verifyUser/:id", authMiddleWare, async (req, res) => {
   try {
     const { id } = req.params;
     const { isVerified, message } = req.body;
-
-    // ✅ Check if the current user is admin
     if (req.user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admins only." });
     }
@@ -880,6 +874,71 @@ router.put("/verifyUser/:id", authMiddleWare, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+router.put("/updateUserVerification", authMiddleWare, async (req, res) => {
+  try {
+    const userId = req.user.id; // Get ID from decoded JWT
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update verification status
+    user.isVerified = "requested";
+    await user.save();
+
+    const title = "Account Verification Pending – Stay Updated!";
+    const message = `
+      Thank you for registering with us! Your account is currently under review by our admin team.
+      Please check back daily for updates on your verification process.
+  
+      Regards,
+      The Lost and Found Team
+    `;
+
+    await fetch("https://lost-and-found-backend-xi.vercel.app/auth/pushNotification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, title, message: message.replace(/<br\/?>/g, "\n") }),
+    });
+
+    await transporter.sendMail({
+      from: `"Lost & Found" <${process.env.SMTP_USER}>`,
+      to: user.email,
+      subject: title,
+      html: message,
+    });
+    const adminEmail = "teamslostandfound@gmail.com";
+    const mailOptions = {
+  from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
+  to: adminEmail,
+  subject: "📝 A User Updated Their Information – Review Required",
+  html: `
+    <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333; max-width: 600px; margin: auto; background: #f9f9f9; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+      <h2 style="color: #FFA500;">User Verification Request</h2>
+      <p>Dear Admin,</p>
+      <p>The following user has recently updated their profile and requested verification. Please review their updated information:</p>
+      <ul style="list-style: none; padding-left: 0;">
+        <li><strong>Name:</strong> ${user.name}</li>
+        <li><strong>Email:</strong> ${user.email}</li>
+        <li><strong>Phone:</strong> ${user.phone || 'Not Provided'}</li>
+        <li><strong>Request Time:</strong> ${new Date().toLocaleString()}</li>
+      </ul>
+      <p style="margin-top: 24px;">Please log in to the admin dashboard to review and verify this user's account.</p>
+      <p style="margin-top: 32px;">Regards,<br/><strong>Lost and Found System</strong></p>
+    </div>
+  `,
+};
+
+
+    await transporter.sendMail(mailOptions);
+
+    res.json({ message: "User verification request has been sent." });
+  } catch (error) {
+    console.error("Error verifying user:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 
 router.get("/getAllUser", authMiddleWare, async (req, res) => {
   try {
