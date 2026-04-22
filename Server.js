@@ -15,7 +15,7 @@ app.use("/uploads", express.static("uploads"));
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('🚀 Backend server is running!');
+  res.send('Backend server is running!');
 });
 
 // Improved MongoDB connection with error handling
@@ -27,9 +27,9 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 30000, // 30 seconds timeout
       socketTimeoutMS: 45000, // 45 seconds socket timeout
     });
-    console.log("✅ MongoDB Connected");
+    console.log("MongoDB Connected");
   } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err);
+    console.error("MongoDB Connection Error:", err);
     process.exit(1); // Exit process with failure
   }
 };
