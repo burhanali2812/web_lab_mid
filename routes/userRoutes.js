@@ -19,60 +19,7 @@ const transporter = nodemailer.createTransport({
 });
 
 
-router.post("/send-feedback", authMiddleWare, async (req, res) => {
-    const { comment } = req.body;
 
-  const { name, email, phone } = req.user;
-
-  if (!email || !name) {
-    return res.status(400).send("Missing email or name");
-  }
-  const adminEmail = process.env.ADMIN_EMAIL || "teamslostandfound@gmail.com";
-const mailOptions = {
-  from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
-  to: adminEmail, 
-  subject: "New User Feedback Received",
-  html: `
-  <div style="font-family: system-ui, sans-serif, Arial; font-size: 16px; color: #333; max-width: 600px; margin: auto; padding: 24px; background-color: #f9f9f9; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-    <p style="border-top: 1px solid #eaeaea; padding-top: 16px;">
-      <strong>Dear Admin,</strong>
-    </p>
-
-    <p style="margin-bottom: 16px;">
-      A user has submitted feedback through the Lost and Found system. Below are the details:
-    </p>
-
-    <div style="margin-bottom: 16px;">
-      <p><strong>Name:</strong> ${name}</p>
-      <p><strong>Email:</strong> ${email}</p>
-      <p><strong>Contact:</strong> ${phone}</p>
-    </div>
-
-    <div style="background-color: #fffbe6; border-left: 4px solid #ffc107; padding: 16px; border-radius: 6px; margin-bottom: 24px;">
-      <p style="margin: 0;"><strong>User's Comment:</strong></p>
-      <p style="margin: 8px 0 0 0;">${comment}</p>
-    </div>
-
-    <p style="font-size: 14px; color: #666;">
-      Please review this feedback and take any necessary actions or note it for system improvements.
-    </p>
-
-    <p style="margin-top: 32px;">
-      Regards,<br>
-      <strong>Lost and Found System</strong>
-    </p>
-  </div>
-  `,
-};
-
-  try {
-    await transporter.sendMail(mailOptions);
-    res.status(200).send("FeedBack Sent");
-  } catch (error) {
-    console.error("Email error:", error);
-    res.status(500).send("Failed to send Feedback");
-  }
-});
 
 
 
@@ -128,8 +75,39 @@ router.post("/signup", async (req, res) => {
       success: false,
       message: "All fields are required",
     });
-  }
 
+  }
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters",
+    });
+  } 
+  if (!/^\d{13}$/.test(cnic)) {
+    return res.status(400).json({
+      success: false,
+      message: "CNIC must be exactly 13 digits",
+    });
+  }
+  if (!/^\d{11}$/.test(phone)) {
+    return res.status(400).json({
+      success: false,
+      message: "Phone number must be exactly 11 digits",
+    });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid email format",
+    });
+  }
+  if (name.trim().length < 3) {
+    return res.status(400).json({
+      success: false,
+      message: "Name must be at least 3 characters",
+    });
+  }
+  
   try {
     // Check existing email or CNIC
     const [existingEmail, existingCnic] = await Promise.all([
@@ -236,9 +214,62 @@ router.post("/signup", async (req, res) => {
     });
   }
 });
+router.post("/send-feedback", authMiddleWare, async (req, res) => {
+    const { comment } = req.body;
 
-router.put(
-  "/update-profile",
+  const { name, email, phone } = req.user;
+
+  if (!email || !name) {
+    return res.status(400).send("Missing email or name");
+  }
+  const adminEmail = process.env.ADMIN_EMAIL || "teamslostandfound@gmail.com";
+const mailOptions = {
+  from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
+  to: adminEmail, 
+  subject: "New User Feedback Received",
+  html: `
+  <div style="font-family: system-ui, sans-serif, Arial; font-size: 16px; color: #333; max-width: 600px; margin: auto; padding: 24px; background-color: #f9f9f9; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <p style="border-top: 1px solid #eaeaea; padding-top: 16px;">
+      <strong>Dear Admin,</strong>
+    </p>
+
+    <p style="margin-bottom: 16px;">
+      A user has submitted feedback through the Lost and Found system. Below are the details:
+    </p>
+
+    <div style="margin-bottom: 16px;">
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Contact:</strong> ${phone}</p>
+    </div>
+
+    <div style="background-color: #fffbe6; border-left: 4px solid #ffc107; padding: 16px; border-radius: 6px; margin-bottom: 24px;">
+      <p style="margin: 0;"><strong>User's Comment:</strong></p>
+      <p style="margin: 8px 0 0 0;">${comment}</p>
+    </div>
+
+    <p style="font-size: 14px; color: #666;">
+      Please review this feedback and take any necessary actions or note it for system improvements.
+    </p>
+
+    <p style="margin-top: 32px;">
+      Regards,<br>
+      <strong>Lost and Found System</strong>
+    </p>
+  </div>
+  `,
+};
+
+  try {
+    await transporter.sendMail(mailOptions);
+    res.status(200).send("FeedBack Sent");
+  } catch (error) {
+    console.error("Email error:", error);
+    res.status(500).send("Failed to send Feedback");
+  }
+});
+
+router.put("/update-profile",
   authMiddleWare,
   async (req, res) => {
     const { name, address } = req.body;
@@ -303,27 +334,7 @@ router.delete("/deleteUser", authMiddleWare, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-router.delete("/deleteUser/:id", authMiddleWare, async (req, res) => {
-if (req.user.role !== "admin") {
-    return res.status(403).json({ message: "Access denied. Admins only." });
-  }
-  try {
-    const { id } = req.params;
 
-    const user = await User.findByIdAndDelete(id);
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-    
-
-    res.status(200).json({ message: "User deleted successfully." });
-  } catch (error) {
-    console.error("Error deleting user:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-//soft delete
 router.put("/deleteUser/:id", authMiddleWare, async (req, res) => {
     if (req.user.role !== "admin") {
     return res.status(403).json({ message: "Access denied. Admins only." });
@@ -474,23 +485,7 @@ router.get("/getAllUser", authMiddleWare, async (req, res) => {
   }
 });
 
-router.post("/getUserEmail", async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (user) {
-      const token = jwt.sign({ email }, process.env.SECRET_KEY, {
-        expiresIn: "15m",
-      });
-      res.status(200).json({ success: true, name: user.name, token });
-    } else {
-      res.status(404).json({ success: false, message: "User not found" });
-    }
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+
 router.post("/reset-password", authMiddleWare, async (req, res) => {
   const { token, newPassword } = req.body;
 
