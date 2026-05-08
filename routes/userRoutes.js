@@ -74,52 +74,7 @@ const mailOptions = {
   }
 });
 
-router.post("/notify-admin-new-user", authMiddleWare, async (req, res) => {
-  const { name, email, phone } = req.user;
 
-  if (!name || !email) {
-    return res.status(400).json({ message: "Missing user name or email." });
-  }
-
-  const adminEmail = process.env.ADMIN_EMAIL || "teamslostandfound@gmail.com";
-
-  const mailOptions = {
-    from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
-    to: adminEmail,
-    subject: "🆕 New User Registered on Lost and Found App",
-    html: `
-      <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333; max-width: 600px; margin: auto; background: #f9f9f9; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-        <h2 style="color: #007BFF;">New User Registered</h2>
-
-        <p>Dear Admin,</p>
-
-        <p>A new user has just created an account on the Lost and Found App. Here are the details:</p>
-
-        <ul style="list-style: none; padding-left: 0;">
-          <li><strong>Name:</strong> ${name}</li>
-          <li><strong>Email:</strong> ${email}</li>
-          <li><strong>Phone:</strong> ${phone || 'Not Provided'}</li>
-          <li><strong>Registration Time:</strong> ${new Date().toLocaleString()}</li>
-        </ul>
-
-        <p style="margin-top: 24px;">Please verify the account if necessary or monitor for activity.</p>
-
-        <p style="margin-top: 32px;">
-          Regards,<br/>
-          <strong>Lost and Found System</strong>
-        </p>
-      </div>
-    `,
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    res.status(200).json({ message: "Admin notified of new user registration." });
-  } catch (error) {
-    console.error("Error sending new user email:", error);
-    res.status(500).json({ message: "Failed to notify admin." });
-  }
-});
 
 router.post("/login", async (req, res) => {
   const { email, password, cnic, loginType } = req.body;
@@ -164,10 +119,11 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-router.post("/signup/step1", async (req, res) => {
-  const { name, email, phone, cnic, address } = req.body;
+router.post("/signup", async (req, res) => {
+  const { name, email, phone, cnic, address, password } = req.body;
 
-  if (!name || !email || !phone || !cnic || !address) {
+  // Validation
+  if (!name || !email || !phone || !cnic || !address || !password) {
     return res.status(400).json({
       success: false,
       message: "All fields are required",
@@ -175,65 +131,44 @@ router.post("/signup/step1", async (req, res) => {
   }
 
   try {
-    // Check for duplicates
+    // Check existing email or CNIC
     const [existingEmail, existingCnic] = await Promise.all([
       User.findOne({ email }),
       User.findOne({ cnic }),
     ]);
 
     if (existingEmail) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email is already registered" });
+      return res.status(400).json({
+        success: false,
+        message: "Email is already registered",
+      });
     }
 
     if (existingCnic) {
-      return res
-        .status(400)
-        .json({ success: false, message: "CNIC is already registered" });
+      return res.status(400).json({
+        success: false,
+        message: "CNIC is already registered",
+      });
     }
 
-    // Create user with personal info only
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
     const user = new User({
       name,
       email,
       phone,
       cnic,
       address,
+      password: hashedPassword,
     });
 
     await user.save();
 
-    return res
-      .status(201)
-      .json({ success: true, message: "Step 1 completed", userId: user._id });
-  } catch (error) {
-    console.error("Signup step1 error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Signup failed",
-      error: error.message,
-    });
-  }
-});
-
-
-router.post("/signup/step3", async (req, res) => {
-  const { userId, password } = req.body;
-
-  if (!userId || !password) {
-    return res.status(400).json({ success: false, message: "User ID and password are required" });
-  }
-
-  try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
-    await user.save();
-
+    // Notification message
     const title = "Account Verification Pending – Stay Updated!";
+
     const message = `
       Thank you for registering with us! Your account is currently under review by our admin team.
       Please check back daily for updates on your verification process.
@@ -242,47 +177,63 @@ router.post("/signup/step3", async (req, res) => {
       The Lost and Found Team
     `;
 
-    await fetch("https://lost-and-found-backend-xi.vercel.app/auth/pushNotification", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, title, message: message.replace(/<br\/?>/g, "\n") }),
-    });
+    // Push notification API
+    await fetch(
+      "https://lost-and-found-backend-xi.vercel.app/notifications/pushNotification",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user._id,
+          title,
+          message,
+        }),
+      }
+    );
 
-    //  Send email to user
+    // Email to user
     await transporter.sendMail({
       from: `"Lost & Found" <${process.env.SMTP_USER}>`,
       to: user.email,
       subject: title,
       html: message,
     });
-    const adminEmail = "teamslostandfound@gmail.com";
-    const mailOptions = {
+
+    // Email to admin
+    await transporter.sendMail({
       from: `"Lost and Found System" <${process.env.SMTP_USER}>`,
-      to: adminEmail,
+      to: "teamslostandfound@gmail.com",
       subject: "🆕 New User Registered on Lost and Found App",
       html: `
-        <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333; max-width: 600px; margin: auto; background: #f9f9f9; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-          <h2 style="color: #007BFF;">New User Registered</h2>
-          <p>Dear Admin,</p>
-          <p>A new user has just completed registration. Here are the details:</p>
-          <ul style="list-style: none; padding-left: 0;">
-            <li><strong>Name:</strong> ${user.name}</li>
-            <li><strong>Email:</strong> ${user.email}</li>
-            <li><strong>Phone:</strong> ${user.phone || 'Not Provided'}</li>
-            <li><strong>Registration Time:</strong> ${new Date().toLocaleString()}</li>
-          </ul>
-          <p style="margin-top: 24px;">Please verify the account or monitor activity.</p>
-          <p style="margin-top: 32px;">Regards,<br/><strong>Lost and Found System</strong></p>
+        <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333;">
+          <h2>New User Registered</h2>
+
+          <p><strong>Name:</strong> ${user.name}</p>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p><strong>Phone:</strong> ${user.phone}</p>
+          <p><strong>Registration Time:</strong> ${new Date().toLocaleString()}</p>
+
+          <br/>
+          <p>Regards,<br/>Lost and Found System</p>
         </div>
       `,
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-
-    return res.status(200).json({ success: true, message: "Password saved and notifications sent." });
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user,
+    });
   } catch (error) {
-    console.error("Signup step3 error:", error);
-    return res.status(500).json({ success: false, message: "Failed to complete registration", error: error.message });
+    console.error("Signup error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Registration failed",
+      error: error.message,
+    });
   }
 });
 
